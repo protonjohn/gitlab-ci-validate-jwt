@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sort"
-	"strings"
+	"encoding/json"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
@@ -46,7 +45,6 @@ func main() {
 	// 				}
 	// 			]
 	// 		}
-	log.Printf("Getting the GitLab JWT public key set from the jwks endpoint at %s...", jwksURL)
 	keySet, err := jwk.Fetch(context.Background(), jwksURL)
 	if err != nil {
 		log.Fatalf("failed to parse JWK from %s: %v", jwksURL, err)
@@ -105,30 +103,24 @@ func main() {
 	//				RSASHA256(
 	//   				base64UrlEncode(header) + "." + base64UrlEncode(payload),
 	//					gitLabJwtKeySet.getKey(header.kid))
-	log.Println("Validating GitLab CI job JWT...")
 	token, err := jwt.ParseString(ciJobJWT, jwt.WithAudience(boundAudience), jwt.WithIssuer(boundIssuer), jwt.WithKeySet(keySet))
 	if err != nil {
 		log.Fatalf("failed to validate the jwt: %v", err)
 	}
-	privateClaims := token.PrivateClaims()
 
-	log.Printf("jwt is valid for project %s", privateClaims["project_path"])
+	claims := token.PrivateClaims()
+	claims["jti"] = token.JwtID()
+	claims["iss"] = token.Issuer()
+	claims["iat"] = token.IssuedAt()
+	claims["nbf"] = token.NotBefore()
+	claims["exp"] = token.Expiration()
+	claims["sub"] = token.Subject()
+	claims["aud"] = token.Audience()
 
-	// dump the jwt claims (sorted by claim name).
-	claims := make([]string, 0, len(privateClaims)+7)
-	claims = append(claims,
-		fmt.Sprintf("jti=%s", token.JwtID()),
-		fmt.Sprintf("iss=%s", token.Issuer()),
-		fmt.Sprintf("iat=%s", token.IssuedAt().Format("2006-01-02T15:04:05-0700")),
-		fmt.Sprintf("nbf=%s", token.NotBefore().Format("2006-01-02T15:04:05-0700")),
-		fmt.Sprintf("exp=%s", token.Expiration().Format("2006-01-02T15:04:05-0700")),
-		fmt.Sprintf("sub=%s", token.Subject()),
-		fmt.Sprintf("aud=%s", strings.Join(token.Audience(), ",")))
-	for k := range privateClaims {
-		claims = append(claims, fmt.Sprintf("%s=%v", k, privateClaims[k]))
+	json, err := json.Marshal(claims)
+	if err != nil {
+		log.Fatalf("failed to marshal jwt data: %v", err)
 	}
-	sort.Strings(claims)
-	for _, claim := range claims {
-		log.Printf("jwt claim: %s", claim)
-	}
+
+	log.Println(string(json))
 }

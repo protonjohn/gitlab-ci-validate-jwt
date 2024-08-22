@@ -1,4 +1,4 @@
-module github.com/rgl/gitlab-ci-validate-jwt
+module github.com/protonjohn/gitlab-ci-validate-jwt
 
 go 1.22
 
